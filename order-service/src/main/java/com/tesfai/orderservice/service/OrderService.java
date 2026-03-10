@@ -6,6 +6,9 @@ import com.tesfai.orderservice.dto.OrderRequest;
 import com.tesfai.orderservice.entity.Order;
 import com.tesfai.orderservice.entity.OrderLineItem;
 import com.tesfai.orderservice.repository.OrderRepository;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,6 +18,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +29,10 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final WebClient.Builder webClientBuilder;
 
-    public boolean placeOrder(OrderRequest orderRequest) {
+    @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackMethod")
+    @TimeLimiter(name = "inventory")
+    @Retry(name = "inventory")
+    public CompletableFuture<String> placeOrder(OrderRequest orderRequest) {
         Order order = new Order();
         order.setOrderNumber(UUID.randomUUID().toString());
 
@@ -53,10 +60,10 @@ public class OrderService {
 
         if(allProductsInStock){
             orderRepository.save(order);
-            return true;
+            return CompletableFuture.supplyAsync(()->"Order Placed Successfully");
         } else {
-            log.error("One or more of the product(s) is/are not in stock, please try again later");
-            return false;
+            log.error("One or more of the product(s) is/are not in stock");
+            return CompletableFuture.supplyAsync(()->"One or more of the product(s) is/are not in stock");
         }
     }
 
@@ -66,5 +73,9 @@ public class OrderService {
         orderLineItem.setQuantity(orderLineItemsDto.quantity());
         orderLineItem.setSkuCode(orderLineItemsDto.skuCode());
         return orderLineItem;
+    }
+
+    public CompletableFuture<String> fallbackMethod(OrderRequest orderRequest, RuntimeException exception){
+        return CompletableFuture.supplyAsync(()->"Ooops! Something get wrong - Please try it again.");
     }
 }
