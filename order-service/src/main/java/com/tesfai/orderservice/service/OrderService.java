@@ -25,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 @Transactional
 @Slf4j
 public class OrderService {
-
     private final OrderRepository orderRepository;
     private final WebClient.Builder webClientBuilder;
 
