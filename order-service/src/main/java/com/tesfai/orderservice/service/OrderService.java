@@ -5,12 +5,14 @@ import com.tesfai.orderservice.dto.OrderLineItemsDto;
 import com.tesfai.orderservice.dto.OrderRequest;
 import com.tesfai.orderservice.entity.Order;
 import com.tesfai.orderservice.entity.OrderLineItem;
+import com.tesfai.orderservice.event.OrderPlacedEvent;
 import com.tesfai.orderservice.repository.OrderRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -27,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 public class OrderService {
     private final OrderRepository orderRepository;
     private final WebClient.Builder webClientBuilder;
+    private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
 
     @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackMethod")
     @TimeLimiter(name = "inventory")
@@ -59,6 +62,7 @@ public class OrderService {
 
         if(allProductsInStock){
             orderRepository.save(order);
+            kafkaTemplate.send("notificationTopic", new OrderPlacedEvent(order.getOrderNumber()));
             return CompletableFuture.supplyAsync(()->"Order Placed Successfully");
         } else {
             log.error("One or more of the product(s) is/are not in stock");
